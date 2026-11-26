@@ -77,7 +77,7 @@ fn main() {
             );
         }
         let rife = Rife::load(&gpu, &load("rife-4.25.safetensors")).expect("modèle");
-        let out = rife.middle(&gpu, &a, &b, 200, 120).expect("calcul");
+        let out = rife.between(&gpu, &a, &b, 200, 120, 0.5).expect("calcul");
         report(&format!("rife ({store})"), &out, &dir, "rife-f16w.rgba");
         report(&format!("rife ({store})"), &out, &dir, "rife-orig.rgba");
     }
@@ -109,11 +109,11 @@ fn main() {
         );
     }
     let rife = Rife::load(&gpu, &load("rife-4.25.safetensors")).expect("modèle");
-    rife.middle(&gpu, &frame, &frame, 1920, 1080)
+    rife.between(&gpu, &frame, &frame, 1920, 1080, 0.5)
         .expect("chauffe");
     let start = Instant::now();
     for _ in 0..3 {
-        rife.middle(&gpu, &frame, &frame, 1920, 1080)
+        rife.between(&gpu, &frame, &frame, 1920, 1080, 0.5)
             .expect("calcul");
     }
     println!(

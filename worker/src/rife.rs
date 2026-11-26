@@ -3,7 +3,7 @@
 //! Un encodeur (`Head`) tire 4 canaux de traits de chaque image. Cinq blocs (`IFBlock`), de la
 //! plus grossière (1/16) à la pleine résolution, affinent un flux optique dans les deux sens, un
 //! masque de mélange et 8 canaux de traits. Les deux images, déformées par le flux, sont
-//! mélangées par la sigmoïde du masque. Même calcul que `IFNet.forward` avec `timestep` 0,5,
+//! mélangées par la sigmoïde du masque. Même calcul que `IFNet.forward` avec un `timestep` donné,
 //! `scale` 1, sans `ensemble` ; l'image est complétée de zéros jusqu'à un multiple de 128 comme
 //! le fait `inference_video.py`.
 
@@ -159,14 +159,17 @@ impl Rife {
         }
     }
 
-    /// Image intermédiaire (à mi-chemin) de deux images RGBA 8 bits de `w` × `h`.
-    pub fn middle(
+    /// Image intermédiaire de deux images RGBA 8 bits de `w` × `h`, à l'instant `t` entre les
+    /// deux (0 : `a`, 1 : `b`, 0,5 : à mi-chemin). RIFE 4.x reçoit `t` en entrée de chaque bloc :
+    /// un seul calcul par image, quel que soit le rapport de cadence (24 → 60, 30 → 144).
+    pub fn between(
         &self,
         gpu: &Gpu,
         a: &[u8],
         b: &[u8],
         w: u32,
         h: u32,
+        t: f32,
     ) -> Result<Vec<u8>, GpuError> {
         let (pw, ph) = (w.div_ceil(ALIGN) * ALIGN, h.div_ceil(ALIGN) * ALIGN);
         let ia = gpu.image_buffer(w, h);
@@ -185,7 +188,7 @@ impl Rife {
         batch.copy(&img1, 0, &cat, 3, 3);
         batch.copy(&f0, 0, &cat, 6, 4);
         batch.copy(&f1, 0, &cat, 10, 4);
-        batch.fill(&cat, 14, 1, 0.5);
+        batch.fill(&cat, 14, 1, t);
         let mut tmp = self.block(&mut batch, 0, &cat);
         let mut flow = gpu.tensor(4, pw, ph);
         batch.copy(&tmp, 0, &flow, 0, 4);
@@ -203,7 +206,7 @@ impl Rife {
             batch.copy(&w1, 0, &cat, 3, 3);
             batch.copy(&wf0, 0, &cat, 6, 4);
             batch.copy(&wf1, 0, &cat, 10, 4);
-            batch.fill(&cat, 14, 1, 0.5);
+            batch.fill(&cat, 14, 1, t);
             batch.copy(&tmp, 4, &cat, 15, 9);
             batch.copy(&flow, 0, &cat, 24, 4);
             tmp = self.block(&mut batch, i, &cat);

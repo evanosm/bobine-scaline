@@ -8,5 +8,6 @@ pub mod frames;
 pub mod gpu;
 pub mod protocol;
 pub mod resize;
+pub mod retime;
 pub mod rife;
 pub mod safetensors;

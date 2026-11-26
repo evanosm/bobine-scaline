@@ -40,17 +40,24 @@ function currentPlatform() {
   return known[key] ?? null;
 }
 
-// 1. Logique : un script classique (Bobine le charge par un <script> simple, pas en module).
+// 1. Logique et panneau : des scripts classiques (Bobine les charge par un <script> simple, pas
+// en module), plus la page et la feuille de style du panneau.
 rmSync(join(out, "dist"), { recursive: true, force: true });
 mkdirSync(join(out, "dist"), { recursive: true });
 await build({
-  entryPoints: [join(root, "src/main.ts")],
+  entryPoints: [join(root, "src/main.ts"), join(root, "src/panel.ts")],
   bundle: true,
   format: "iife",
   target: "es2022",
-  outfile: join(out, "dist/main.js"),
+  outdir: join(out, "dist"),
   logLevel: "warning",
 });
+for (const file of ["panel.html", "panel.css"]) {
+  copyFileSync(join(root, "src", file), join(out, "dist", file));
+}
+// Icône du plugin (menus, onglet de la bibliothèque), citée par `icon` dans le manifeste.
+mkdirSync(join(out, "assets"), { recursive: true });
+copyFileSync(join(root, "assets/icon.svg"), join(out, "assets/icon.svg"));
 
 // 2. Modèles, vérifiés contre leurs sommes SHA-256.
 mkdirSync(join(out, "models"), { recursive: true });

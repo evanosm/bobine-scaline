@@ -21,8 +21,12 @@ const TEXTS = {
     en: "This clip is already {width} × {height}: nothing to upscale. Change the target width in Scaline's settings.",
   },
   tooFast: {
-    fr: "Doubler la cadence de ce clip dépasserait 240 images par seconde.",
-    en: "Doubling this clip's frame rate would go past 240 frames per second.",
+    fr: "Ce ralenti dépasserait 240 images par seconde : choisis un facteur plus petit dans les réglages de Scaline.",
+    en: "This slow motion would go past 240 frames per second: pick a smaller factor in Scaline's settings.",
+  },
+  alreadyFps: {
+    fr: "Ce clip tourne déjà à {fps} im./s : choisis une cadence plus haute dans les réglages de Scaline.",
+    en: "This clip already runs at {fps} fps: pick a higher frame rate in Scaline's settings.",
   },
   upscaleStart: {
     fr: "Agrandissement {from} → {to} ({model}) : {frames} images, environ {time} sur {gpu}.",
@@ -38,18 +42,18 @@ const TEXTS = {
   },
   upscaleLabel: { fr: "Agrandir en 4K", en: "Upscale to 4K" },
   slowmoLabel: { fr: "Ralenti fluide", en: "Smooth slow motion" },
-  cadenceLabel: { fr: "Doubler la cadence", en: "Double the frame rate" },
+  framerateLabel: { fr: "Augmenter la cadence", en: "Increase the frame rate" },
   upscaled: {
     fr: "Clip agrandi en {size}. Le média d'origine reste dans le projet.",
     en: "Clip upscaled to {size}. The original media stays in the project.",
   },
   slowed: {
-    fr: "Ralenti fluide appliqué (vitesse ÷ 2, son lié compris). Le média d'origine reste dans le projet.",
-    en: "Smooth slow motion applied (speed ÷ 2, linked sound included). The original media stays in the project.",
+    fr: "Ralenti fluide appliqué (vitesse ÷ {factor}, son lié compris). Le média d'origine reste dans le projet.",
+    en: "Smooth slow motion applied (speed ÷ {factor}, linked sound included). The original media stays in the project.",
   },
-  doubled: {
-    fr: "Cadence doublée ({fps} im./s), même vitesse. Le média d'origine reste dans le projet.",
-    en: "Frame rate doubled ({fps} fps), same speed. The original media stays in the project.",
+  framerated: {
+    fr: "Clip passé à {fps} im./s, même vitesse. Le média d'origine reste dans le projet.",
+    en: "Clip now runs at {fps} fps, same speed. The original media stays in the project.",
   },
   cancelled: {
     fr: "Rien n'a changé dans le montage ; le média rendu reste dans la liste des médias.",
@@ -75,6 +79,118 @@ const TEXTS = {
     fr: "Le rendu a échoué ({code}). Le montage n'a pas changé.",
     en: "Rendering failed ({code}). The edit did not change.",
   },
+  badFactor: {
+    fr: "Le ralenti va de ×1,5 à ×8.",
+    en: "Slow motion goes from ×1.5 to ×8.",
+  },
+  tooBig: {
+    fr: "Au-delà de 7680 px de large, l'encodeur refuse l'image.",
+    en: "Beyond 7680 px wide, the encoder refuses the frame.",
+  },
+  renderCancelled: {
+    fr: "Rendu annulé. Le montage n'a pas changé.",
+    en: "Render cancelled. The edit did not change.",
+  },
+  // Panneau : clip.
+  panelEmpty: { fr: "Sélectionner un clip", en: "Select a clip" },
+  panelNotReady: { fr: "Analyse du média en cours…", en: "Analysing the media…" },
+  clipMeta: { fr: "{size} · {fps} im./s · {duration} s", en: "{size} · {fps} fps · {duration} s" },
+  // Panneau : réglages.
+  fieldPreset: { fr: "Préréglage", en: "Preset" },
+  presetCustom: { fr: "Personnalisé", en: "Custom" },
+  presetDouble: { fr: "Doubler la cadence", en: "Double the frame rate" },
+  presetFps120: { fr: "Passer à 120 im./s", en: "Go to 120 fps" },
+  presetUpscale4k: { fr: "Agrandir en 4K", en: "Upscale to 4K" },
+  presetSlow4: { fr: "Ralenti ×4", en: "Slow motion ×4" },
+  fieldAction: { fr: "Action", en: "Action" },
+  actionFramerate: { fr: "Cadence", en: "Frame rate" },
+  actionSlowmo: { fr: "Ralenti", en: "Slow motion" },
+  actionUpscale: { fr: "Agrandissement", en: "Upscale" },
+  fieldFps: { fr: "Cadence visée", en: "Target frame rate" },
+  unitFps: { fr: "im./s", en: "fps" },
+  noteFps: { fr: "×{ratio} par rapport au clip", en: "×{ratio} the clip's rate" },
+  noteNtsc: { fr: " · {fps} dans cette séquence NTSC", en: " · {fps} in this NTSC sequence" },
+  fieldFactor: { fr: "Ralenti", en: "Slow down" },
+  noteFactor: {
+    fr: "{fps} → {fps2} im./s · durée {from} s → {to} s",
+    en: "{fps} → {fps2} fps · length {from} s → {to} s",
+  },
+  fieldWidth: { fr: "Largeur", en: "Width" },
+  unitPx: { fr: "px", en: "px" },
+  noteWidth: { fr: "{size} · ×{ratio}", en: "{size} · ×{ratio}" },
+  noteStretch: {
+    fr: " · au-delà de ×4, l'image est étirée sans détail en plus",
+    en: " · beyond ×4 the frame is stretched with no extra detail",
+  },
+  quickSequence: { fr: "Séquence", en: "Sequence" },
+  fieldModel: { fr: "Image", en: "Footage" },
+  modelPhoto: { fr: "Prise de vue réelle", en: "Live action" },
+  modelAnime: { fr: "Animation", en: "Animation" },
+  advanced: { fr: "Avancé", en: "Advanced" },
+  dedupeLabel: { fr: "Recalculer les images répétées", en: "Rebuild repeated frames" },
+  dedupeHint: {
+    fr: "Un jeu à 30 ou 45 im./s enregistré à 60 répète des images : elles sont recalculées et le mouvement devient régulier.",
+    en: "A game at 30 or 45 fps recorded at 60 repeats frames: they are rebuilt and the motion becomes even.",
+  },
+  cutsLabel: { fr: "Respecter les changements de plan", en: "Respect shot changes" },
+  cutsHint: {
+    fr: "Entre deux plans, l'image la plus proche est reprise au lieu d'un fondu inventé.",
+    en: "Between two shots, the nearest frame is reused instead of an invented blend.",
+  },
+  engine: { fr: "Moteur", en: "Engine" },
+  engineRife: {
+    fr: "RIFE 4.25, chaque image à son instant exact",
+    en: "RIFE 4.25, each frame at its exact instant",
+  },
+  engineEsrgan: {
+    fr: "Real-ESRGAN ×4 ({model}), puis mise à la taille",
+    en: "Real-ESRGAN ×4 ({model}), then resized",
+  },
+  // Panneau : résultat.
+  result: { fr: "Résultat", en: "Result" },
+  resIn: { fr: "Entrée", en: "Input" },
+  resOut: { fr: "Sortie", en: "Output" },
+  resFrames: {
+    fr: "{size} · {fps} im./s · {frames} images",
+    en: "{size} · {fps} fps · {frames} frames",
+  },
+  resLength: { fr: "Durée", en: "Length" },
+  resWork: { fr: "Calcul", en: "Work" },
+  workInterp: { fr: "{n} images intermédiaires", en: "{n} in-between frames" },
+  workUpscale: { fr: "{n} images agrandies", en: "{n} upscaled frames" },
+  resTime: { fr: "Temps estimé", en: "Estimated time" },
+  timeMeasuring: { fr: "Mesure sur le GPU…", en: "Measuring on the GPU…" },
+  timeValue: { fr: "≈ {time} sur {gpu}", en: "≈ {time} on {gpu}" },
+  timeSoftware: { fr: " (logiciel, très lent)", en: " (software, very slow)" },
+  resFile: { fr: "Fichier", en: "File" },
+  fileValue: { fr: "ProRes 422 · ≈ {size} · sans son", en: "ProRes 422 · ≈ {size} · no sound" },
+  runFramerate: { fr: "Rendre à {fps} im./s", en: "Render at {fps} fps" },
+  runSlowmo: { fr: "Ralentir ×{factor}", en: "Slow down ×{factor}" },
+  runUpscale: { fr: "Agrandir en {size}", en: "Upscale to {size}" },
+  running: { fr: "Un rendu est en cours.", en: "A render is running." },
+  hintAlreadyFps: {
+    fr: "Le clip tourne déjà à {fps} im./s : vise une cadence plus haute.",
+    en: "The clip already runs at {fps} fps: aim for a higher frame rate.",
+  },
+  hintTooFast: {
+    fr: "Au-delà de 240 im./s, l'encodeur refuse.",
+    en: "Beyond 240 fps, the encoder refuses.",
+  },
+  hintAlreadyBig: {
+    fr: "Le clip fait déjà cette largeur : vise plus large.",
+    en: "The clip is already this wide: aim wider.",
+  },
+  hintOldBobine: {
+    fr: "Mets Bobine à jour pour lancer un rendu depuis ce panneau ; les commandes du clip marchent.",
+    en: "Update Bobine to render from this panel; the clip commands work.",
+  },
+  // Panneau : rendu en cours.
+  jobTitle: { fr: "En cours", en: "In progress" },
+  jobCancel: { fr: "Annuler", en: "Cancel" },
+  jobCancelling: { fr: "Annulation…", en: "Cancelling…" },
+  jobPreparing: { fr: "Préparation du GPU…", en: "Preparing the GPU…" },
+  jobPercent: { fr: "{percent} %", en: "{percent}%" },
+  jobLeft: { fr: "{percent} % · encore {time} environ", en: "{percent}% · about {time} left" },
 } as const;
 
 export type TextKey = keyof typeof TEXTS;
@@ -100,3 +216,18 @@ export function formatDuration(seconds: number): string {
   const m = minutes % 60;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
+
+/** Nombre entier lisible, séparateur de milliers de la langue (« 3 600 », « 3,600 »). */
+export function formatCount(value: number): string {
+  return new Intl.NumberFormat(french ? "fr-FR" : "en-US").format(Math.round(value));
+}
+
+/** Taille de fichier lisible : « 820 Mo », « 9,8 Go ». */
+export function formatBytes(bytes: number): string {
+  const giga = bytes / 1e9;
+  if (giga >= 1) return `${formatNumber(giga, 1)} ${french ? "Go" : "GB"}`;
+  return `${Math.max(1, Math.round(bytes / 1e6))} ${french ? "Mo" : "MB"}`;
+}
+
+/** Langue des textes (attribut `lang` du panneau). */
+export const LANG = french ? "fr" : "en";

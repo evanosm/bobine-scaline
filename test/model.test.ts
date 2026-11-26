@@ -5,8 +5,10 @@ import {
   lots,
   mediaOf,
   newSourceIn,
+  OVERLAP,
   renderName,
   sourceRange,
+  targetRate,
   upscaleSize,
 } from "../src/model";
 import { info, project, SECOND, sequence, videoClip } from "./fixtures";
@@ -88,7 +90,7 @@ describe("plage et lots", () => {
     expect(sourceRange(late, info()).to).toBeCloseTo(10);
   });
 
-  it("découpe en lots sous le plafond de Bobine, chacun reprenant une image du précédent", () => {
+  it("découpe en lots sous le plafond de Bobine, chacun reprenant OVERLAP images du précédent", () => {
     const frame = { width: 1920, height: 1080 };
     const plan = lots({ from: 0, to: 10 }, 25, frame);
     const perLot = Math.floor((384 * 1024 * 1024) / (1920 * 1080 * 4));
@@ -101,7 +103,7 @@ describe("plage et lots", () => {
       const prev = plan[i - 1];
       const lot = plan[i];
       if (!prev || !lot) throw new Error("lot");
-      expect(prev.to - lot.from).toBeCloseTo(1 / 25);
+      expect(prev.to - lot.from).toBeCloseTo(OVERLAP / 25);
     }
   });
 
@@ -115,5 +117,13 @@ describe("plage et lots", () => {
     expect(renderName("/rushs/plage.mov", "3840x2160")).toBe("plage 3840x2160");
     expect(renderName("C:\\vidéos\\saut.final.mp4", "x2")).toBe("saut.final x2");
     expect(renderName("", "x2")).toBe("clip x2");
+  });
+});
+
+describe("cadence visée", () => {
+  it("prend la version NTSC de la cadence visée dans une séquence NTSC", () => {
+    expect(targetRate(60, { num: 60, den: 1 })).toEqual({ num: 60, den: 1 });
+    expect(targetRate(60, { num: 30000, den: 1001 })).toEqual({ num: 60000, den: 1001 });
+    expect(targetRate(119.6, { num: 25, den: 1 })).toEqual({ num: 120, den: 1 });
   });
 });

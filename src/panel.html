@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scaline</title>
+    <link rel="stylesheet" href="panel.css" />
+    <script src="panel.js" defer></script>
+  </head>
+  <body>
+    <main class="panel" id="panel" data-state="empty">
+      <section class="job" id="job" aria-labelledby="job-title" hidden>
+        <div class="job-head">
+          <h2 class="job-title" id="job-title">En cours</h2>
+          <button class="ghost" id="job-cancel" type="button">Annuler</button>
+        </div>
+        <p class="job-name" id="job-name"></p>
+        <p class="job-label" id="job-label"></p>
+        <div
+          class="job-bar"
+          id="job-bar"
+          role="progressbar"
+          aria-labelledby="job-title"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span class="job-fill" id="job-fill"></span>
+        </div>
+        <p class="job-status" id="job-status" aria-live="polite"></p>
+      </section>
+
+      <section class="clip" aria-live="polite">
+        <figure class="frame">
+          <canvas id="thumb" aria-hidden="true"></canvas>
+          <figcaption class="frame-note" id="note"></figcaption>
+        </figure>
+        <p class="clip-name" id="name"></p>
+        <p class="clip-meta" id="meta"></p>
+      </section>
+
+      <form class="form" id="form" novalidate>
+        <div class="row">
+          <label class="label" for="preset" id="preset-label">Préréglage</label>
+          <select class="select" id="preset"></select>
+        </div>
+        <div class="row">
+          <label class="label" for="action" id="action-label">Action</label>
+          <select class="select" id="action"></select>
+        </div>
+
+        <fieldset class="group" data-action="framerate">
+          <div class="row">
+            <label class="label" for="fps" id="fps-label">Cadence visée</label>
+            <span class="input">
+              <input id="fps" type="number" min="1" max="240" step="1" inputmode="numeric" />
+              <span class="unit" id="fps-unit"></span>
+            </span>
+          </div>
+          <div class="quick" id="fps-quick"></div>
+          <p class="note" id="fps-note"></p>
+        </fieldset>
+
+        <fieldset class="group" data-action="slowmo">
+          <div class="row">
+            <label class="label" for="factor" id="factor-label">Ralenti</label>
+            <span class="input">
+              <input id="factor" type="number" min="1.5" max="8" step="0.5" inputmode="decimal" />
+              <span class="unit">×</span>
+            </span>
+          </div>
+          <div class="quick" id="factor-quick"></div>
+          <p class="note" id="factor-note"></p>
+        </fieldset>
+
+        <fieldset class="group" data-action="upscale">
+          <div class="row">
+            <label class="label" for="width" id="width-label">Largeur</label>
+            <span class="input">
+              <input id="width" type="number" min="2" max="7680" step="2" inputmode="numeric" />
+              <span class="unit" id="width-unit"></span>
+            </span>
+          </div>
+          <div class="quick" id="width-quick"></div>
+          <p class="note" id="width-note"></p>
+          <div class="row">
+            <label class="label" for="model" id="model-label">Image</label>
+            <select class="select" id="model"></select>
+          </div>
+        </fieldset>
+
+      </form>
+
+      <section class="result" aria-labelledby="result-title">
+        <h2 class="result-title" id="result-title">Résultat</h2>
+        <dl class="facts" id="result"></dl>
+      </section>
+
+      <details class="advanced" id="advanced">
+        <summary id="advanced-label"></summary>
+        <div class="advanced-body">
+          <div class="switch-row" data-for="interpolate">
+            <label class="switch">
+              <input id="dedupe" type="checkbox" />
+              <span class="switch-text" id="dedupe-label">Recalculer les images répétées</span>
+            </label>
+            <p class="note" id="dedupe-hint"></p>
+          </div>
+          <div class="switch-row" data-for="interpolate">
+            <label class="switch">
+              <input id="cuts" type="checkbox" />
+              <span class="switch-text" id="cuts-label">Respecter les changements de plan</span>
+            </label>
+            <p class="note" id="cuts-hint"></p>
+          </div>
+          <dl class="facts">
+            <dt id="engine-label"></dt>
+            <dd id="engine"></dd>
+          </dl>
+        </div>
+      </details>
+
+      <footer class="run">
+        <p class="hint" id="hint"></p>
+        <button class="primary" id="run" type="button"></button>
+      </footer>
+    </main>
+  </body>
+</html>

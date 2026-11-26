@@ -8,8 +8,11 @@
 //! - `estimate` `{task, model?, width, height}` → secondes par image, mesurées sur ce GPU ;
 //! - `upscale` `{frames, first, count, after?, model, width, height, progress?}` → images
 //!   agrandies (Real-ESRGAN ×4 puis ramenées à `width` × `height`) ;
-//! - `interpolate` `{frames, first, count, after?, last?, progress?}` → cadence doublée (RIFE) :
-//!   pour chaque image, l'image intermédiaire avec la précédente puis l'image elle-même.
+//! - `interpolate` `{frames, first, count, fps, origin?, after?, last?, dedupe?, cuts?, progress?}`
+//!   → images à la cadence `fps` (temps du média, à partir de `origin`) : recopie d'une image
+//!   source quand une sortie tombe dessus, sinon RIFE à l'instant exact entre les deux images qui
+//!   l'encadrent ; doublons écartés (`dedupe`) et coupes respectées (`cuts`), les deux par défaut
+//!   (`retime`). `after` est alors le dernier instant de SORTIE déjà rendu.
 //!
 //! `frames` est le chemin relatif de l'en-tête rendu par `media.frames` (champ `header`) ; `first`
 //! et `count` choisissent les images du lot ; les images d'instant ≤ `after` (secondes, temps du
@@ -20,6 +23,7 @@ use crate::esrgan::{self, Esrgan};
 use crate::frames::{Failure, FrameSet, work_file};
 use crate::gpu::{Gpu, GpuError};
 use crate::resize::resize_rgba;
+use crate::retime::{self, SAME_TIME, Source, Timeline};
 use crate::rife::Rife;
 use crate::safetensors::SafeTensors;
 use serde::Deserialize;
@@ -33,8 +37,6 @@ const MAX_OUT_SIDE: u32 = 8192;
 const MAX_OUT_AREA: u64 = 8192 * 4320;
 /// Plus grand nombre d'images rendues par appel (borne le fichier écrit).
 const MAX_PER_CALL: usize = 240;
-/// Écart de temps sous lequel deux images sont la même (secondes).
-const SAME_TIME: f64 = 1e-4;
 
 impl From<GpuError> for Failure {
     fn from(e: GpuError) -> Self {
@@ -276,9 +278,9 @@ fn estimate(state: &mut State, params: &Value) -> Result<Value, Failure> {
                 test_image(p.width, p.height, 0),
                 test_image(p.width, p.height, 7),
             );
-            net.middle(gpu, &a, &b, p.width, p.height)?;
+            net.between(gpu, &a, &b, p.width, p.height, 0.5)?;
             let start = Instant::now();
-            net.middle(gpu, &a, &b, p.width, p.height)?;
+            net.between(gpu, &a, &b, p.width, p.height, 0.5)?;
             start.elapsed().as_secs_f64()
         }
     };
@@ -402,19 +404,116 @@ fn result(raw: String, count: usize, width: u32, height: u32, times: &[f64]) -> 
     })
 }
 
+/// Cadence en fraction (images par seconde) : 29,97 = 30000 / 1001.
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct Rate {
+    num: u32,
+    den: u32,
+}
+
+/// Plus grand nombre d'images de sortie par appel (ralenti ×8 de `MAX_PER_CALL` images).
+const MAX_OUT_PER_CALL: usize = 8 * MAX_PER_CALL;
+
 #[derive(Debug, Deserialize)]
 struct InterpolateParams {
     frames: String,
     #[serde(default)]
     first: usize,
     count: usize,
+    /// Dernier instant de sortie déjà rendu (appel précédent) : seuls les suivants sont rendus.
     #[serde(default)]
     after: Option<f64>,
-    /// Dernier appel : l'image finale est répétée, la sortie compte alors 2 × N images.
+    /// Cadence de sortie, en temps du média : l'image k tombe à `origin + k × den / num`.
+    fps: Rate,
+    /// Instant de l'image de sortie 0 ; par défaut, celui de la première image de l'appel.
+    #[serde(default)]
+    origin: Option<f64>,
+    /// Dernier appel : la dernière image source dure jusqu'à la fin de son intervalle.
     #[serde(default)]
     last: bool,
+    /// Recalcule les images répétées (doublons d'enregistrement) ; `false` : chaque image compte.
+    #[serde(default = "yes")]
+    dedupe: bool,
+    /// Aucune image inventée entre deux plans ; `false` : RIFE calcule aussi à travers une coupe.
+    #[serde(default = "yes")]
+    cuts: bool,
     #[serde(default)]
     progress: Option<Span>,
+}
+
+/// Durée d'une image du lot : écart médian entre deux instants (1/30 s pour une image seule).
+fn frame_duration(times: &[f64]) -> f64 {
+    let mut gaps: Vec<f64> = times
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .filter(|gap| *gap > SAME_TIME)
+        .collect();
+    if gaps.is_empty() {
+        return 1.0 / 30.0;
+    }
+    gaps.sort_by(f64::total_cmp);
+    gaps[gaps.len() / 2]
+}
+
+/// Images sources lues pendant un appel : les trois dernières restent en mémoire (la paire en
+/// cours et la précédente), les autres sont relues au besoin.
+struct Loaded(Vec<(usize, Vec<u8>)>);
+
+impl Loaded {
+    fn load(&mut self, set: &mut FrameSet, index: usize) -> Result<(), Failure> {
+        if !self.0.iter().any(|(i, _)| *i == index) {
+            self.0.push((index, set.frame(index)?));
+            if self.0.len() > 3 {
+                self.0.remove(0);
+            }
+        }
+        Ok(())
+    }
+
+    fn get(&self, index: usize) -> Result<&[u8], Failure> {
+        self.0
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map(|(_, data)| data.as_slice())
+            .ok_or_else(|| Failure::new("internal", "frame not loaded"))
+    }
+}
+
+/// Images gardées (doublons écartés si `dedupe`) de `lo..end` et coupes entre elles (si `cuts`),
+/// d'après les vignettes.
+fn timeline(
+    set: &mut FrameSet,
+    lo: usize,
+    end: usize,
+    dedupe: bool,
+    cuts: bool,
+) -> Result<Timeline, Failure> {
+    let mut thumbs = Vec::new();
+    for index in lo..end {
+        thumbs.push(retime::thumb(&set.frame(index)?, set.width, set.height));
+    }
+    let duplicate: Vec<bool> = (0..thumbs.len())
+        .map(|j| {
+            dedupe && j > 0 && retime::is_duplicate(&retime::change(&thumbs[j - 1], &thumbs[j]))
+        })
+        .collect();
+    let kept = retime::kept(&duplicate);
+    let frames: Vec<usize> = (lo..end).filter(|i| kept[i - lo]).collect();
+    let cut_after = frames
+        .windows(2)
+        .map(|pair| {
+            cuts && retime::is_cut(&retime::change(
+                &thumbs[pair[0] - lo],
+                &thumbs[pair[1] - lo],
+            ))
+        })
+        .collect();
+    let times = frames.iter().map(|&i| set.timestamps[i]).collect();
+    Ok(Timeline {
+        frames,
+        times,
+        cut_after,
+    })
 }
 
 fn interpolate(
@@ -423,45 +522,64 @@ fn interpolate(
     progress: &mut dyn FnMut(f64),
 ) -> Result<Value, Failure> {
     let p: InterpolateParams = serde_json::from_value(params.clone()).map_err(bad_params)?;
+    let rate = f64::from(p.fps.num) / f64::from(p.fps.den.max(1));
+    if p.fps.den == 0 || !(rate > 0.0 && rate <= 1000.0) {
+        return Err(Failure::new("bad_params", "fps out of range"));
+    }
     let mut set = FrameSet::open(&state.work_dir, &p.frames)?;
     let range = range(&set, p.first, p.count)?;
     let span = p.progress.unwrap_or(Span(0.0, 1.0));
+    // Les `LOOKBACK` images d'avant l'appel décident des doublons comme l'appel précédent.
+    let line = timeline(
+        &mut set,
+        range.start.saturating_sub(retime::LOOKBACK),
+        range.end,
+        p.dedupe,
+        p.cuts,
+    )?;
+    let origin = p.origin.unwrap_or(set.timestamps[range.start]);
+    let until = if p.last {
+        set.timestamps[range.end - 1] + frame_duration(&set.timestamps) - 2.0 * SAME_TIME
+    } else {
+        // Au-delà de la dernière image gardée, il faut la suivante (appel d'après).
+        line.times.last().copied().unwrap_or(origin) + SAME_TIME
+    };
+    let start = p.after.map_or(origin, |a| a.max(origin));
+    if !origin.is_finite() || !start.is_finite() || (until - start) * rate > MAX_OUT_PER_CALL as f64
+    {
+        return Err(Failure::new(
+            "bad_params",
+            "too many output frames for one call",
+        ));
+    }
+    let outputs = retime::output_times(origin, rate, p.after, until);
     let (name, mut out) = state.output()?;
     let (gpu, net) = state.rife()?;
     let (w, h) = (set.width as u32, set.height as u32);
-    let total = range.len() as f64;
-    let mut written = 0usize;
+    let mut loaded = Loaded(Vec::new());
     let mut times = Vec::new();
-    // L'image précédente du lot (même hors de `range`), lue une fois.
-    let mut previous: Option<Vec<u8>> = if range.start > 0 {
-        Some(set.frame(range.start - 1)?)
-    } else {
-        None
-    };
-    for (n, index) in range.enumerate() {
-        let frame = set.frame(index)?;
-        let t = set.timestamps[index];
-        if is_new(t, p.after) {
-            if let Some(before) = &previous {
-                let middle = net.middle(gpu, before, &frame, w, h)?;
-                out.write_all(&middle).map_err(write_failed)?;
-                written += 1;
+    let total = outputs.len().max(1) as f64;
+    for (n, &time) in outputs.iter().enumerate() {
+        let Some(source) = line.source_at(time, p.last) else {
+            break;
+        };
+        match source {
+            Source::Copy(i) => {
+                loaded.load(&mut set, i)?;
+                out.write_all(loaded.get(i)?).map_err(write_failed)?;
             }
-            out.write_all(&frame).map_err(write_failed)?;
-            written += 1;
-            times.push(t);
+            Source::Between { a, b, t } => {
+                loaded.load(&mut set, a)?;
+                loaded.load(&mut set, b)?;
+                let image = net.between(gpu, loaded.get(a)?, loaded.get(b)?, w, h, t)?;
+                out.write_all(&image).map_err(write_failed)?;
+            }
         }
+        times.push(time);
         progress(span.at((n + 1) as f64 / total));
-        previous = Some(frame);
-    }
-    if p.last
-        && let Some(frame) = &previous
-    {
-        out.write_all(frame).map_err(write_failed)?;
-        written += 1;
     }
     out.flush().map_err(write_failed)?;
-    Ok(result(name, written, w, h, &times))
+    Ok(result(name, times.len(), w, h, &times))
 }
 
 /// Dossier des modèles : `<dossier du plugin>/models`, le programme étant dans `<plugin>/bin/`.
@@ -472,4 +590,9 @@ pub fn models_dir() -> Option<PathBuf> {
     }
     let exe = std::env::current_exe().ok()?;
     Some(exe.parent()?.parent()?.join("models"))
+}
+
+/// Valeur par défaut `true` d'un champ booléen absent (serde).
+fn yes() -> bool {
+    true
 }

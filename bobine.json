@@ -6,14 +6,15 @@
     "en": "Scaline"
   },
   "description": {
-    "fr": "Agrandit un clip vidéo en 4K (Real-ESRGAN) ou en fait un ralenti fluide en ajoutant des images intermédiaires (RIFE). Calcul sur le GPU de la machine, sans réseau. Le résultat est un nouveau média proposé avant d'être appliqué ; l'original reste dans le projet.",
-    "en": "Upscales a video clip to 4K (Real-ESRGAN) or turns it into smooth slow motion by adding in-between frames (RIFE). Runs on this computer's GPU, offline. The result is a new media shown before it is applied; the original stays in the project."
+    "fr": "Agrandit un clip vidéo en 4K (Real-ESRGAN), en fait un ralenti fluide ou augmente sa cadence (30 → 60, 60 → 120) en ajoutant des images intermédiaires (RIFE). Calcul sur le GPU de la machine, sans réseau. Le résultat est un nouveau média proposé avant d'être appliqué ; l'original reste dans le projet.",
+    "en": "Upscales a video clip to 4K (Real-ESRGAN), turns it into smooth slow motion or raises its frame rate (30 → 60, 60 → 120) by adding in-between frames (RIFE). Runs on this computer's GPU, offline. The result is a new media shown before it is applied; the original stays in the project."
   },
   "author": "Genez",
-  "version": "1.0.0",
+  "icon": "assets/icon.svg",
+  "version": "1.1.0",
   "api": "1",
   "engines": {
-    "bobine": ">=0.4.0"
+    "bobine": ">=0.4.2"
   },
   "permissions": ["project:read", "project:write", "media:frames", "native:worker"],
   "contributes": {
@@ -31,11 +32,18 @@
           "fr": "Ralenti fluide (images intermédiaires)",
           "en": "Smooth slow motion (in-between frames)"
         }
+      },
+      {
+        "id": "framerate",
+        "title": {
+          "fr": "Augmenter la cadence (images intermédiaires)",
+          "en": "Increase the frame rate (in-between frames)"
+        }
       }
     ],
     "menus": {
-      "plugins": ["upscale", "slowmo"],
-      "clip": ["upscale", "slowmo"]
+      "plugins": ["upscale", "slowmo", "framerate"],
+      "clip": ["upscale", "slowmo", "framerate"]
     },
     "settings": [
       {
@@ -60,13 +68,35 @@
         "max": 7680
       },
       {
-        "type": "toggle",
-        "id": "keep-speed",
+        "type": "choice",
+        "id": "slowmo-factor",
         "label": {
-          "fr": "Ralenti fluide : garder la vitesse (cadence ×2 seulement)",
-          "en": "Smooth slow motion: keep speed (only double the fps)"
+          "fr": "Ralenti fluide : vitesse divisée par",
+          "en": "Smooth slow motion: speed divided by"
         },
-        "default": false
+        "default": "2",
+        "choices": ["2", "4", "8"]
+      },
+      {
+        "type": "number",
+        "id": "target-fps",
+        "label": {
+          "fr": "Augmenter la cadence : images par seconde visées",
+          "en": "Increase the frame rate: target frames per second"
+        },
+        "default": 60,
+        "min": 24,
+        "max": 240
+      }
+    ],
+    "panels": [
+      {
+        "id": "scaline",
+        "title": {
+          "fr": "Scaline",
+          "en": "Scaline"
+        },
+        "where": "library"
       }
     ]
   },
@@ -76,5 +106,6 @@
     "darwin-x64": "bin/scaline-worker-darwin-x64",
     "linux-x64": "bin/scaline-worker-linux-x64",
     "windows-x64": "bin/scaline-worker-windows-x64.exe"
-  }
+  },
+  "ui": "dist/panel.html"
 }

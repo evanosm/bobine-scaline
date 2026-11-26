@@ -24,12 +24,19 @@ function isVideoClip(sequence: Sequence, found: Found): boolean {
   return sequence.tracks[found.trackIndex]?.kind === "video" && found.clip.source.type === "media";
 }
 
-/** Le clip vidéo sélectionné, sinon le plus haut sous la tête de lecture (`at` en flicks). */
-export function chosenVideo(sequence: Sequence, selected: string[], at: number): Found | null {
+/** Le premier clip vidéo de la sélection (le panneau n'agit que sur lui). */
+export function selectedVideo(sequence: Sequence, selected: string[]): Found | null {
   for (const id of selected) {
     const found = findClip(sequence, id);
     if (found && isVideoClip(sequence, found)) return found;
   }
+  return null;
+}
+
+/** Le clip vidéo sélectionné, sinon le plus haut sous la tête de lecture (`at` en flicks). */
+export function chosenVideo(sequence: Sequence, selected: string[], at: number): Found | null {
+  const found = selectedVideo(sequence, selected);
+  if (found) return found;
   for (const [trackIndex, track] of sequence.tracks.entries()) {
     if (track.kind !== "video" || track.muted) continue;
     const clip = track.clips.find(
@@ -64,6 +71,15 @@ export function seconds(flicks: number): number {
 
 export function fpsOf(rate: Rational): number {
   return rate.den > 0 ? rate.num / rate.den : 0;
+}
+
+/**
+ * Cadence visée en fraction : `fps` images par seconde, ou sa version NTSC (× 1000 / 1001) si la
+ * séquence est elle-même NTSC (60 dans une séquence à 59,94 → 59,94).
+ */
+export function targetRate(fps: number, sequence: Rational): Rational {
+  const whole = Math.round(fps);
+  return sequence.den === 1001 ? { num: whole * 1000, den: 1001 } : { num: whole, den: 1 };
 }
 
 /** Plus grand côté des images que Bobine envoie au programme natif. */
@@ -101,9 +117,16 @@ export function upscaleSize(
   width: number,
 ): { width: number; height: number; factor: number } | null {
   const fit = Math.min(sequence.width / frame.width, sequence.height / frame.height);
-  let factor = fit > 1.01 ? fit : width / frame.width;
-  factor = Math.min(
-    factor,
+  return upscaleTo(frame, fit > 1.01 ? frame.width * fit : width);
+}
+
+/** Taille de sortie pour `width` de large : proportions gardées, côtés pairs, plafonds de l'encodeur. */
+export function upscaleTo(
+  frame: { width: number; height: number },
+  width: number,
+): { width: number; height: number; factor: number } | null {
+  const factor = Math.min(
+    width / frame.width,
     MAX_SIDE / frame.width,
     MAX_SIDE / frame.height,
     Math.sqrt(MAX_AREA / (frame.width * frame.height)),
@@ -137,21 +160,23 @@ export function sourceRange(clip: Clip, info: MediaInfo): { from: number; to: nu
 export const LOT_BYTES = 384 * 1024 * 1024;
 
 /**
- * Lots `[from, to)` d'au plus `LOT_BYTES` d'images. Chaque lot reprend une image du précédent :
- * elle sert d'image précédente aux images intermédiaires, et le programme natif ne la rend pas
- * deux fois (`after`).
+ * Images reprises du lot précédent : le programme natif les relit pour reconnaître les doublons
+ * comme au lot d'avant (`LOOKBACK` de `retime.rs`) et ne les rend pas deux fois (`after`).
  */
+export const OVERLAP = 8;
+
+/** Lots `[from, to)` d'au plus `LOT_BYTES` d'images, chacun reprenant `OVERLAP` images du précédent. */
 export function lots(
   range: { from: number; to: number },
   fps: number,
   frame: { width: number; height: number },
 ): { from: number; to: number }[] {
   const perFrame = frame.width * frame.height * 4;
-  const count = Math.max(2, Math.min(240, Math.floor(LOT_BYTES / perFrame)));
-  const step = (count - 1) / fps;
+  const count = Math.max(OVERLAP + 2, Math.min(240, Math.floor(LOT_BYTES / perFrame)));
+  const step = (count - OVERLAP) / fps;
   const out: { from: number; to: number }[] = [];
   for (let start = range.from; start < range.to - 1e-9; start += step) {
-    const from = out.length === 0 ? start : start - 1 / fps;
+    const from = out.length === 0 ? start : start - OVERLAP / fps;
     out.push({ from: Math.max(range.from, from), to: Math.min(range.to, start + step) });
   }
   return out;
@@ -168,6 +193,23 @@ export function frameCount(range: { from: number; to: number }, fps: number): nu
  */
 export function newSourceIn(clip: Clip, first: number): number {
   return Math.max(0, clip.source_in - Math.round(first * FLICKS_PER_SECOND));
+}
+
+/**
+ * Instant du média (secondes) que le clip montre à `playhead` (secondes de séquence) ; tête de
+ * lecture hors du clip : son milieu. Vitesse constante, comme `sourceRange`.
+ */
+export function mediaTimeAt(clip: Clip, playhead: number): number {
+  const rate = clip.props.speed?.rate ?? 1;
+  const start = seconds(clip.timeline_start);
+  const length = seconds(clip.duration);
+  const local = playhead >= start && playhead < start + length ? playhead - start : length / 2;
+  return seconds(clip.source_in) + local * rate;
+}
+
+/** Nom du fichier d'un média, sans son dossier. */
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() ?? "";
 }
 
 /** Nom du fichier rendu : celui du média d'origine (sans dossier ni extension) et un suffixe. */

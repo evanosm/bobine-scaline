@@ -94,7 +94,8 @@ fn frames_outside_the_work_folder_are_refused() {
     for frames in ["../frames-1.json", "/etc/passwd"] {
         let (_, reply) = send(
             &mut state,
-            json!({ "id": 3, "method": "interpolate", "params": { "frames": frames, "count": 1 } }),
+            json!({ "id": 3, "method": "interpolate", "params": {
+                "frames": frames, "count": 1, "fps": { "num": 50, "den": 1 } } }),
         );
         assert_eq!(reply["error"]["code"], "bad_path", "{frames}");
     }
@@ -156,6 +157,14 @@ fn upscaling_writes_one_frame_of_the_asked_size_per_new_frame() {
     assert!(values.first().is_some_and(|v| *v >= 0.5) && values.last() == Some(&1.0));
 }
 
+/// Images d'une réponse, découpées.
+fn outputs(dir: &Path, reply: &Value, size: usize) -> Vec<Vec<u8>> {
+    let raw =
+        std::fs::read(dir.join(reply["result"]["raw"].as_str().expect("raw"))).expect("sortie");
+    assert_eq!(raw.len() % size, 0);
+    raw.chunks(size).map(<[u8]>::to_vec).collect()
+}
+
 #[test]
 fn interpolation_doubles_the_frames_across_two_overlapping_sets() {
     if !has_gpu() {
@@ -168,34 +177,153 @@ fn interpolation_doubles_the_frames_across_two_overlapping_sets() {
     // Lot 1 : images 0 à 2. Lot 2 : images 2 à 4 (la 2 en recouvrement, déjà rendue).
     let first = write_set(&dir, 1, &all[0..3], w, h, 0.0);
     let second = write_set(&dir, 2, &all[2..5], w, h, 2.0 / 25.0);
+    let fps = json!({ "num": 50, "den": 1 });
     let (_, a) = send(
         &mut state,
-        json!({ "id": 6, "method": "interpolate", "params": { "frames": first, "count": 3 } }),
+        json!({ "id": 6, "method": "interpolate",
+            "params": { "frames": first, "count": 3, "fps": fps } }),
     );
     let (_, b) = send(
         &mut state,
         json!({ "id": 7, "method": "interpolate", "params": {
-            "frames": second, "count": 3, "after": a["result"]["last_time"], "last": true } }),
+            "frames": second, "count": 3, "fps": fps, "origin": a["result"]["first_time"],
+            "after": a["result"]["last_time"], "last": true } }),
     );
     // Lot 1 : 0, ½, 1, 1½, 2. Lot 2 : 2½, 3, 3½, 4, puis 4 répétée : 10 images pour 5.
-    assert_eq!(a["result"]["count"], 5, "{a}");
-    assert_eq!(b["result"]["count"], 5, "{b}");
-    let read = |reply: &Value| {
-        std::fs::read(dir.join(reply["result"]["raw"].as_str().expect("raw"))).expect("sortie")
-    };
-    let (ra, rb) = (read(&a), read(&b));
     let size = w * h * 4;
-    assert_eq!(ra.len(), 5 * size);
-    assert_eq!(rb.len(), 5 * size);
+    let (ra, rb) = (outputs(&dir, &a, size), outputs(&dir, &b, size));
+    assert_eq!((ra.len(), rb.len()), (5, 5), "{a} {b}");
     // Les images d'origine sont recopiées telles quelles, aux positions paires.
-    assert_eq!(&ra[0..size], &all[0][..]);
-    assert_eq!(&ra[2 * size..3 * size], &all[1][..]);
-    assert_eq!(&rb[size..2 * size], &all[3][..]);
-    assert_eq!(&rb[4 * size..], &all[4][..]);
+    assert_eq!(ra[0], all[0]);
+    assert_eq!(ra[2], all[1]);
+    assert_eq!(rb[1], all[3]);
+    assert_eq!(rb[4], all[4]);
     // L'image intermédiaire entre 0 et 1 est différente des deux.
-    let middle = &ra[size..2 * size];
-    assert_ne!(middle, &all[0][..]);
-    assert_ne!(middle, &all[1][..]);
+    assert_ne!(ra[1], all[0]);
+    assert_ne!(ra[1], all[1]);
+}
+
+#[test]
+fn in_between_frames_are_computed_at_any_instant_for_any_frame_rate() {
+    if !has_gpu() {
+        return;
+    }
+    let dir = work_dir("any-rate");
+    let (w, h) = (48, 32);
+    let all = vec![frame(w, h, 30, 0), frame(w, h, 30, 8)];
+    let mut state = State::new(dir.clone(), models());
+    let set = write_set(&dir, 1, &all, w, h, 0.0);
+    // 25 → 100 im./s : trois images entre les deux sources, aux quarts.
+    let (_, reply) = send(
+        &mut state,
+        json!({ "id": 1, "method": "interpolate",
+            "params": { "frames": set, "count": 2, "fps": { "num": 100, "den": 1 } } }),
+    );
+    let out = outputs(&dir, &reply, w * h * 4);
+    assert_eq!(out.len(), 5, "{reply}");
+    assert_eq!(out[0], all[0]);
+    assert_eq!(out[4], all[1]);
+    for i in 1..4 {
+        assert_ne!(out[i], out[i - 1], "image {i}");
+    }
+}
+
+#[test]
+fn repeated_frames_are_replaced_by_in_between_frames() {
+    if !has_gpu() {
+        return;
+    }
+    let dir = work_dir("duplicates");
+    let (w, h) = (48, 32);
+    // Jeu à 12,5 im./s enregistré à 25 : chaque image est répétée une fois.
+    let (f0, f2, f4) = (frame(w, h, 30, 0), frame(w, h, 30, 4), frame(w, h, 30, 8));
+    let all = vec![f0.clone(), f0.clone(), f2.clone(), f2.clone(), f4.clone()];
+    let mut state = State::new(dir.clone(), models());
+    let set = write_set(&dir, 1, &all, w, h, 0.0);
+    let (_, reply) = send(
+        &mut state,
+        json!({ "id": 1, "method": "interpolate", "params": {
+            "frames": set, "count": 5, "fps": { "num": 25, "den": 1 }, "last": true } }),
+    );
+    let out = outputs(&dir, &reply, w * h * 4);
+    assert_eq!(out.len(), 5, "{reply}");
+    assert_eq!(out[0], f0);
+    assert_eq!(out[2], f2);
+    assert_eq!(out[4], f4);
+    // À la place des répétitions : une image entre les deux voisines, le mouvement avance.
+    assert_ne!(out[1], f0);
+    assert_ne!(out[1], f2);
+    assert_ne!(out[3], f2);
+}
+
+#[test]
+fn without_dedupe_repeated_frames_are_kept_as_they_are() {
+    if !has_gpu() {
+        return;
+    }
+    let dir = work_dir("no-dedupe");
+    let (w, h) = (48, 32);
+    let (f0, f2) = (frame(w, h, 30, 0), frame(w, h, 30, 4));
+    let all = vec![f0.clone(), f0.clone(), f2.clone()];
+    let mut state = State::new(dir.clone(), models());
+    let set = write_set(&dir, 1, &all, w, h, 0.0);
+    let (_, reply) = send(
+        &mut state,
+        json!({ "id": 1, "method": "interpolate", "params": {
+            "frames": set, "count": 3, "fps": { "num": 25, "den": 1 }, "dedupe": false } }),
+    );
+    let out = outputs(&dir, &reply, w * h * 4);
+    // La répétition reste à sa place : aucune image recalculée.
+    assert_eq!(out, vec![f0.clone(), f0, f2]);
+}
+
+#[test]
+fn nothing_is_blended_across_a_change_of_shot() {
+    if !has_gpu() {
+        return;
+    }
+    let dir = work_dir("cut");
+    let (w, h) = (48, 32);
+    let other: Vec<u8> = [220, 110, 35, 255].repeat(w * h);
+    let all = vec![frame(w, h, 30, 0), other.clone()];
+    let mut state = State::new(dir.clone(), models());
+    let set = write_set(&dir, 1, &all, w, h, 0.0);
+    let (_, reply) = send(
+        &mut state,
+        json!({ "id": 1, "method": "interpolate",
+            "params": { "frames": set, "count": 2, "fps": { "num": 100, "den": 1 } } }),
+    );
+    let out = outputs(&dir, &reply, w * h * 4);
+    // 0, ¼ et ½ : la première image (l'ancien plan jusqu'à la coupe) ; ¾ et 1 : la seconde.
+    assert_eq!(
+        out,
+        vec![
+            all[0].clone(),
+            all[0].clone(),
+            all[0].clone(),
+            other.clone(),
+            other
+        ]
+    );
+}
+
+#[test]
+fn a_missing_or_absurd_frame_rate_is_refused() {
+    let dir = work_dir("bad-fps");
+    let mut state = State::new(dir.clone(), models());
+    let set = write_set(&dir, 1, &[frame(8, 8, 30, 0)], 8, 8, 0.0);
+    for fps in [
+        json!(null),
+        json!({ "num": 0, "den": 1 }),
+        json!({ "num": 5000, "den": 1 }),
+    ] {
+        let (_, reply) = send(
+            &mut state,
+            json!({ "id": 1, "method": "interpolate",
+                "params": { "frames": set, "count": 1, "fps": fps } }),
+        );
+        assert_eq!(reply["error"]["code"], "bad_params", "{fps}: {reply}");
+    }
 }
 
 #[test]

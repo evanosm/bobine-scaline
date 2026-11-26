@@ -1,25 +1,54 @@
 # Scaline
 
-Plugin maison de [Bobine](https://genez.app/bobine) : agrandit un clip vidéo en 4K (Real-ESRGAN) ou en fait un
-ralenti fluide en ajoutant des images intermédiaires (RIFE). Le calcul tourne sur le GPU de la machine, sans réseau.
-Le résultat est un nouveau média, proposé avant d'être appliqué ; l'original reste dans le projet.
+Plugin maison de [Bobine](https://genez.app/bobine) : agrandit un clip vidéo en 4K (Real-ESRGAN), en fait un
+ralenti fluide ou augmente sa cadence (30 → 60, 60 → 120, 24 → 60…) en ajoutant des images intermédiaires (RIFE).
+Le calcul tourne sur le GPU de la machine, sans réseau. Le résultat est un nouveau média, proposé avant d'être
+appliqué ; l'original reste dans le projet.
 
-Licence MIT. Gratuit. Bobine 0.4.0 ou plus (`media.frames` avec `every_frame`, `media.encode`, `ReplaceClipMedia`).
+Licence MIT. Gratuit. Bobine 0.4.2 ou plus (`media.frames` avec `every_frame`, `media.encode`, `ReplaceClipMedia` ; panneau : `selection`, `media.thumbnail`, `plugin.post`, `native.stop`).
 
 ## Ce que voit l'utilisateur
 
-Deux commandes, dans le menu du clip et le menu Plugins. Elles prennent le clip vidéo sélectionné, sinon celui
+Trois commandes, dans le menu du clip et le menu Plugins. Elles prennent le clip vidéo sélectionné, sinon celui
 sous la tête de lecture.
 
 - **Agrandir en 4K** : chaque image du clip est agrandie ×4 par Real-ESRGAN, puis ramenée à la taille visée : celle
   de la séquence si elle est plus grande que le clip (l'image y tient entière), sinon 3840 de large (réglable).
   Une séquence 4K reçoit donc un clip 1080p en 3840 × 2160 ; un clip 720p dans une séquence 1080p passe en
   1920 × 1080.
-- **Ralenti fluide (images intermédiaires)** : RIFE calcule une image entre chaque paire d'images ; le nouveau
-  média a deux fois plus d'images à cadence double (30 → 60 im./s), puis le clip passe à la moitié de sa vitesse
-  (`SetClipSpeed`, ripple : les clips suivants se décalent). Le son lié est ralenti avec lui (règle de Bobine pour
-  les clips liés). Réglage « garder la vitesse » : seulement la cadence doublée, même durée (utile dans une
-  séquence à 60 im./s).
+- **Ralenti fluide (images intermédiaires)** : le nouveau média a 2, 4 ou 8 fois plus d'images (réglage), puis le
+  clip passe à ½, ¼ ou ⅛ de sa vitesse (`SetClipSpeed`, ripple : les clips suivants se décalent). Le son lié est
+  ralenti avec lui (règle de Bobine pour les clips liés). Refusé au-delà de 240 im./s (plafond de l'encodeur).
+- **Augmenter la cadence (images intermédiaires)** : même durée, cadence visée réglable (60 par défaut, de 24 à
+  240). Dans une séquence NTSC, la cadence visée suit (60 → 59,94). Refusé si le clip tourne déjà à cette cadence.
+
+**Panneau Scaline** (onglet de la bibliothèque, icône `assets/icon.svg`) : il agit sur le clip vidéo SÉLECTIONNÉ ;
+sans sélection, il affiche « Sélectionner un clip ». De haut en bas :
+
+- l'image du clip sous la tête de lecture (`media.thumbnail`), son nom (coupé s'il est long), taille, cadence, durée ;
+- **Préréglage** (menu : Doubler la cadence, Passer à 120 im./s, Agrandir en 4K, Ralenti ×4 ; « Personnalisé » dès
+  qu'un réglage s'en écarte) et **Action** (menu : Cadence, Ralenti, Agrandissement) ;
+- des réglages libres : cadence visée (im./s, raccourcis : double du clip, 60, 120, 144, 240), ralenti de ×1,5 à ×8
+  au demi, largeur en pixels (raccourcis : séquence, 1440p, 4K ; au-delà de ×4 l'image est seulement étirée) et type
+  d'image ; une note sous chaque champ (rapport au clip, cadence NTSC suivie, durée allongée, taille de sortie) ;
+- **Résultat** : entrée et sortie (taille, cadence, images), durée, images calculées, temps estimé mesuré sur le GPU
+  (`estimate`, une mesure par moteur et taille d'image) et taille approchée du fichier ProRes 422 ;
+- **Avancé** : recalcul des images répétées et respect des changements de plan (interrupteurs, envoyés au programme
+  natif : `dedupe`, `cuts`), moteur utilisé ;
+- le bouton dit ce qu'il fait (« Rendre à 120 im./s ») ; un réglage impossible est signalé sous le champ.
+
+Le rendu part dans la logique du plugin (`bobine.post`) et continue si le panneau se ferme. Sa carte « En cours »,
+en haut du panneau même sans sélection, montre clip, action, progression, temps restant et bouton Annuler (le rendu
+s'arrête à l'étape suivante, le calcul natif tout de suite par `native.stop`, le fichier partiel est supprimé).
+Demande Bobine 0.4.2 (événements `selection` et `progress`, `media.thumbnail`, `plugin.post`, `native.stop`).
+
+Les images intermédiaires sont placées à leur instant exact (`worker/src/retime.rs`) :
+
+- d'après l'horodatage réel des images, pas leur numéro : cadence variable (OBS, ShadowPlay) et rapports non
+  entiers (24 → 60) ; RIFE reçoit l'instant entre les deux images (un seul calcul par image de sortie) ;
+- **doublons** : une image qui répète la précédente (jeu à 30 ou 45 im./s enregistré à 60) est recalculée entre
+  ses voisines, ce qui retire la saccade. Trois répétitions de suite au plus : au-delà, la scène est immobile ;
+- **coupes** : entre deux plans, rien n'est inventé ni fondu ; l'image source la plus proche est reprise.
 
 Avant de lancer, une notification annonce ce qui va être fait et la durée estimée, mesurée sur le GPU de la
 machine (« Agrandissement 1920 × 1080 → 3840 × 2160 (photo) : 240 images, environ 15 min sur Apple M1 Pro »).
@@ -27,16 +56,17 @@ La progression s'affiche dans la barre des tâches de fond. À la fin, une propo
 clip » (plus la vitesse pour le ralenti) : Appliquer ou Annuler. Le clip garde ses propriétés, images clés,
 transitions et son lien.
 
-Choix de conception : deux commandes, une par intention (plus net, 4K ou ralenti), et un seul réglage pour le cas
-moins courant (cadence doublée sans ralentir) plutôt qu'une troisième commande.
+Choix de conception : une commande par intention (plus net, ralenti, plus fluide à vitesse égale), un réglage par
+commande.
 
 Réglages (« Mes extensions ») :
 
-| Réglage                            | Par défaut | Effet                                                                                 |
-| ---------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
-| Modèle : `photo` ou `animation`    | `photo`    | `realesr-general-x4v3` (prise de vue réelle) ou `realesr-animevideov3` (dessin animé) |
-| Largeur visée                      | 3840       | Taille de sortie quand la séquence n'est pas plus grande que le clip                  |
-| Ralenti fluide : garder la vitesse | non        | Cadence doublée seulement, sans `SetClipSpeed`                                        |
+| Réglage                              | Par défaut | Effet                                                                                 |
+| ------------------------------------ | ---------- | ------------------------------------------------------------------------------------- |
+| Modèle : `photo` ou `animation`      | `photo`    | `realesr-general-x4v3` (prise de vue réelle) ou `realesr-animevideov3` (dessin animé) |
+| Largeur visée                        | 3840       | Taille de sortie quand la séquence n'est pas plus grande que le clip                  |
+| Ralenti fluide : vitesse divisée par | 2          | 2, 4 ou 8                                                                             |
+| Augmenter la cadence : im./s visées  | 60         | De 24 à 240                                                                           |
 
 ## Comment ça marche
 
@@ -54,8 +84,10 @@ project.propose(ReplaceClipMedia { clip, media, source_in }, [SetClipSpeed])
 ```
 
 - Lots : la plage du média lue par le clip (vitesse comprise), élargie d'une image de chaque côté. Chaque lot
-  reprend la dernière image du précédent : elle sert d'image précédente à RIFE, et le programme natif ne la rend
-  pas deux fois (`after` : les images d'instant ≤ `after` ne sont pas réécrites).
+  reprend les 8 dernières images du précédent (`OVERLAP`) : le programme natif les relit pour reconnaître les
+  doublons comme au lot d'avant, et ne les rend pas deux fois (`after`).
+- `interpolate` reçoit la cadence de sortie `fps` (temps du média) et, après le premier appel, `origin` (instant de
+  la première image de sortie) ; `after` est le dernier instant de sortie déjà rendu.
 - Appels au programme natif : ~45 s de calcul et 256 Mo écrits au plus chacun (le délai de Bobine est 10 min).
 - `source_in` du clip dans le nouveau média = `source_in` d'origine − instant de la première image rendue.
 - Images reçues réduites à 1920 de côté au plus (plafond de `media.frames`) : un clip 4K ou plus n'est pas
@@ -85,7 +117,7 @@ en f32.
   d'origine de Real-ESRGAN (`half=True`). Sortie ×4 ramenée à la taille visée sur le processeur (moyenne de
   surface pour réduire, bilinéaire pour agrandir).
 - RIFE 4.25 (IFNet_HDv3, 5 blocs de 1/16 à 1/1) : image entière complétée de zéros jusqu'à un multiple de 128,
-  comme `inference_video.py` ; `timestep` 0,5, `scale` 1. Calculs en f32 (stockage f16) : en f16, le flux
+  comme `inference_video.py` ; `timestep` libre (0 à 1), `scale` 1. Calculs en f32 (stockage f16) : en f16, le flux
   s'écartait de quelques niveaux par endroits pour un gain faible.
 
 ## Vérification
@@ -157,7 +189,7 @@ pnpm check                # mêmes règles que Bobine
 ```
 
 Ne jamais compiler dans `package/` : un `target/` y dépasse les plafonds d'un paquet. Essai dans Bobine : source
-« dev » pointant sur `package/` (`extensions.json`), Bobine 0.4.0 ou plus.
+« dev » pointant sur `package/` (`extensions.json`), Bobine 0.4.2 ou plus.
 
 CI (`.github/workflows/ci.yml`, à chaque push, Ubuntu seulement) : clippy, tests du programme natif sur lavapipe,
 Biome, typecheck, tests du plugin, `bobine-plugin check`. Au tag `v<version>` (`release.yml`) : programme compilé
@@ -178,9 +210,10 @@ macOS, M1 Pro, clip 1280 × 720 de 1 s à 25 im./s posé dans une séquence 1280
 ## Limites connues
 
 - Pas de son dans le média rendu : le clip son lié garde l'original (règle de `ReplaceClipMedia`).
-- Cadence constante supposée pour placer les images intermédiaires (`fps` nominal du média).
 - Un seul rendu à la fois (une session `media.encode` par plugin).
-- Le ralenti double la durée du clip et décale les clips suivants (ripple).
+- Le ralenti multiplie la durée du clip et décale les clips suivants (ripple).
+- Pas encore de protection du HUD ni de repli sur les zones où RIFE se trompe (mouvements très rapides) : étape
+  suivante, voir `docs/plugins/scaline-qualite.md` dans le dépôt de Bobine.
 - macOS Intel, Linux et Windows : compilés et testés en CI (lavapipe sous Linux, WARP sous Windows, un test à la
   fois : WARP plante quand plusieurs appareils DirectX 12 sont créés en parallèle), pas essayés sur une vraie machine.
 - Windows : wgpu compile les shaders avec FXC, sans f16 : stockage et calculs en f32 (Real-ESRGAN 1,6 fois plus

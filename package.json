@@ -1,6 +1,6 @@
 {
   "name": "bobine-scaline",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Scaline, plugin d'agrandissement et d'images intermédiaires pour Bobine.",
   "license": "MIT",
