@@ -164,6 +164,17 @@ Biome, typecheck, tests du plugin, `bobine-plugin check`. Au tag `v<version>` (`
 et testé sur les quatre plateformes (macOS arm64 et x64, Linux x64 glibc, Windows x64 sur WARP), un paquet
 `.bobine-ext` (< 50 Mo, vérifié) joint à la release. Publication sur la marketplace : manuelle, compte admin.
 
+## Essai dans Bobine
+
+Vu dans la vraie app (Bobine `dev-0.3.0` du 2026-11-26, en 0.3.4 : source dev dont le manifeste dit `>=0.3.4`),
+macOS, M1 Pro, clip 1280 × 720 de 1 s à 25 im./s posé dans une séquence 1280 × 720 :
+
+- Ralenti fluide : estimation, 1 lot de 25 images, `interpolate` en 2,7 s, média importé « clip720p25 x2.mov »
+  (ProRes, 1280 × 720, 50 im./s, 50 images, 1 s).
+- Agrandir en 4K : 4 appels `upscale` (7 images chacun, ~12 s), média « clip720p25 3840x2160.mov » (ProRes,
+  3840 × 2160, 25 images) ; proposition « Scaline : Agrandir en 4K, remplacer le média du clip » affichée avec
+  Appliquer / Annuler. « Appliquer » n'a pas été cliqué (essai sans clic).
+
 ## Limites connues
 
 - Pas de son dans le média rendu : le clip son lié garde l'original (règle de `ReplaceClipMedia`).
