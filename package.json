@@ -1,0 +1,30 @@
+{
+  "name": "bobine-scaline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scaline, plugin d'agrandissement et d'images intermédiaires pour Bobine.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:js": "node scripts/build.mjs --no-worker",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "check": "bobine-plugin check package",
+    "pack": "bobine-plugin pack package"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.9",
+    "@bobine/plugin-sdk": "file:../bobine-plugin-sdk",
+    "@types/node": "26.6.7",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.1"
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "id": "genez.scaline",
+  "kind": "plugin",
+  "name": {
+    "fr": "Scaline",
+    "en": "Scaline"
+  },
+  "description": {
+    "fr": "Agrandit un clip vidéo en 4K (Real-ESRGAN) ou en fait un ralenti fluide en ajoutant des images intermédiaires (RIFE). Calcul sur le GPU de la machine, sans réseau. Le résultat est un nouveau média proposé avant d'être appliqué ; l'original reste dans le projet.",
+    "en": "Upscales a video clip to 4K (Real-ESRGAN) or turns it into smooth slow motion by adding in-between frames (RIFE). Runs on this computer's GPU, offline. The result is a new media shown before it is applied; the original stays in the project."
+  },
+  "author": "Genez",
+  "version": "1.0.0",
+  "api": "1",
+  "engines": {
+    "bobine": ">=0.4.0"
+  },
+  "permissions": ["project:read", "project:write", "media:frames", "native:worker"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "upscale",
+        "title": {
+          "fr": "Agrandir en 4K",
+          "en": "Upscale to 4K"
+        }
+      },
+      {
+        "id": "slowmo",
+        "title": {
+          "fr": "Ralenti fluide (images intermédiaires)",
+          "en": "Smooth slow motion (in-between frames)"
+        }
+      }
+    ],
+    "menus": {
+      "plugins": ["upscale", "slowmo"],
+      "clip": ["upscale", "slowmo"]
+    },
+    "settings": [
+      {
+        "type": "choice",
+        "id": "model",
+        "label": {
+          "fr": "Modèle : photo (prise de vue réelle) ou animation",
+          "en": "Model: photo (live action) or animation (cartoon)"
+        },
+        "default": "photo",
+        "choices": ["photo", "animation"]
+      },
+      {
+        "type": "number",
+        "id": "width",
+        "label": {
+          "fr": "Largeur visée (px) si la séquence n'est pas plus grande",
+          "en": "Target width (px) if the sequence is not larger"
+        },
+        "default": 3840,
+        "min": 1280,
+        "max": 7680
+      },
+      {
+        "type": "toggle",
+        "id": "keep-speed",
+        "label": {
+          "fr": "Ralenti fluide : garder la vitesse (cadence ×2 seulement)",
+          "en": "Smooth slow motion: keep speed (only double the fps)"
+        },
+        "default": false
+      }
+    ]
+  },
+  "main": "dist/main.js",
+  "native": {
+    "darwin-arm64": "bin/scaline-worker-darwin-arm64",
+    "darwin-x64": "bin/scaline-worker-darwin-x64",
+    "linux-x64": "bin/scaline-worker-linux-x64",
+    "windows-x64": "bin/scaline-worker-windows-x64.exe"
+  }
+}
