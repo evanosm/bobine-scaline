@@ -39,7 +39,8 @@ jobs:
           rustup show active-toolchain
           cargo fmt --check
           cargo clippy --all-targets --locked -- -D warnings
-          cargo test --locked
+          # Un test à la fois : lavapipe plante (SIGSEGV) quand plusieurs appareils vivent en même temps.
+          cargo test --locked -- --test-threads=1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: scaline/package.json
