@@ -17,7 +17,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     env:
-      SDK_COMMIT: 4b6b172a423156be0050016695004b85518257e1
+      SDK_COMMIT: a8352a65f7aeb48f3e35c184bbd62241eafefe27
       SCALINE_REQUIRE_GPU: "1"
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:

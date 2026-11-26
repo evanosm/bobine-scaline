@@ -82,7 +82,7 @@ jobs:
     permissions:
       contents: write
     env:
-      SDK_COMMIT: 4b6b172a423156be0050016695004b85518257e1
+      SDK_COMMIT: a8352a65f7aeb48f3e35c184bbd62241eafefe27
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
