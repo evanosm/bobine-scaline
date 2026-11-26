@@ -32,11 +32,11 @@ moins courant (cadence doublée sans ralentir) plutôt qu'une troisième command
 
 Réglages (« Mes extensions ») :
 
-| Réglage | Par défaut | Effet |
-|---|---|---|
-| Modèle : `photo` ou `animation` | `photo` | `realesr-general-x4v3` (prise de vue réelle) ou `realesr-animevideov3` (dessin animé) |
-| Largeur visée | 3840 | Taille de sortie quand la séquence n'est pas plus grande que le clip |
-| Ralenti fluide : garder la vitesse | non | Cadence doublée seulement, sans `SetClipSpeed` |
+| Réglage                            | Par défaut | Effet                                                                                 |
+| ---------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
+| Modèle : `photo` ou `animation`    | `photo`    | `realesr-general-x4v3` (prise de vue réelle) ou `realesr-animevideov3` (dessin animé) |
+| Largeur visée                      | 3840       | Taille de sortie quand la séquence n'est pas plus grande que le clip                  |
+| Ralenti fluide : garder la vitesse | non        | Cadence doublée seulement, sans `SetClipSpeed`                                        |
 
 ## Comment ça marche
 
@@ -94,14 +94,14 @@ Sortie des shaders comparée à PyTorch 2.15 (f32, processeur) sur des images d'
 écrit les entrées et les références, `cargo run --release --example compare -- <dossier> ../models` compare).
 Écarts en niveaux sur 255, images 8 bits, Apple M1 Pro (Metal), le 2026-11-26 :
 
-| Réseau (image d'essai) | Stockage / calculs | vs PyTorch, mêmes poids f16 | vs PyTorch, poids f32 d'origine |
-|---|---|---|---|
-| Real-ESRGAN photo (96 × 64 → 384 × 256) | f32 / f32 | max 1, 100 % exacts | max 1, 98,2 % exacts |
-| Real-ESRGAN photo | f16 / f16 (par défaut) | max 4, moyenne 0,24 | max 4, moyenne 0,24 |
-| Real-ESRGAN animation | f32 / f32 | max 1, 100 % exacts | max 1, 98,5 % exacts |
-| Real-ESRGAN animation | f16 / f16 (par défaut) | max 3, moyenne 0,16 | max 3, moyenne 0,16 |
-| RIFE 4.25 (200 × 120, complétée à 256 × 128) | f32 / f32 | max 1, 99,99 % exacts | max 5, moyenne 0,009 |
-| RIFE 4.25 | f16 / f32 (par défaut) | max 6, moyenne 0,05 | max 2, moyenne 0,05 |
+| Réseau (image d'essai)                       | Stockage / calculs     | vs PyTorch, mêmes poids f16 | vs PyTorch, poids f32 d'origine |
+| -------------------------------------------- | ---------------------- | --------------------------- | ------------------------------- |
+| Real-ESRGAN photo (96 × 64 → 384 × 256)      | f32 / f32              | max 1, 100 % exacts         | max 1, 98,2 % exacts            |
+| Real-ESRGAN photo                            | f16 / f16 (par défaut) | max 4, moyenne 0,24         | max 4, moyenne 0,24             |
+| Real-ESRGAN animation                        | f32 / f32              | max 1, 100 % exacts         | max 1, 98,5 % exacts            |
+| Real-ESRGAN animation                        | f16 / f16 (par défaut) | max 3, moyenne 0,16         | max 3, moyenne 0,16             |
+| RIFE 4.25 (200 × 120, complétée à 256 × 128) | f32 / f32              | max 1, 99,99 % exacts       | max 5, moyenne 0,009            |
+| RIFE 4.25                                    | f16 / f32 (par défaut) | max 6, moyenne 0,05         | max 2, moyenne 0,05             |
 
 Les écarts « max 1 » viennent de l'arrondi final (une valeur à x,5 près). Les tests `worker/tests/ops.rs`
 comparent aussi chaque opération à un calcul de référence (écart < 1e-4 en f32) ; la CI les fait tourner sur
@@ -109,11 +109,11 @@ lavapipe, le Vulkan logiciel de Mesa.
 
 Vitesse, même Mac (M1 Pro, 16 cœurs GPU), image 1920 × 1080 :
 
-| Calcul | Temps par image |
-|---|---|
+| Calcul                                            | Temps par image                        |
+| ------------------------------------------------- | -------------------------------------- |
 | Agrandir en 4K, photo (1920 × 1080 → 3840 × 2160) | 3,8 s (3,7 s GPU + 0,1 s de réduction) |
-| Agrandir en 4K, animation | 1,8 s |
-| Image intermédiaire RIFE | 0,21 s |
+| Agrandir en 4K, animation                         | 1,8 s                                  |
+| Image intermédiaire RIFE                          | 0,21 s                                 |
 
 Soit environ 19 min pour 10 s de vidéo à 30 im./s en photo, 1 min pour en faire un ralenti fluide.
 
@@ -123,11 +123,11 @@ Poids convertis en safetensors f16 (`scripts/convert_models.py`, noms de tenseur
 release [`modeles-1`](https://github.com/evanosm/bobine-scaline/releases/tag/modeles-1) de ce dépôt, sommes dans
 `models/SHA256SUMS` ; les poids d'origine ne sont pas dans git.
 
-| Fichier | Taille | Origine | SHA-256 de l'original |
-|---|---|---|---|
-| `realesr-general-x4v3.safetensors` | 2,4 Mo | [Real-ESRGAN v0.2.5.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth) | `8dc7edb9…6292` |
-| `realesr-animevideov3.safetensors` | 1,2 Mo | [Real-ESRGAN v0.2.5.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth) | `b8a83768…b75d` |
-| `rife-4.25.safetensors` | 11 Mo | [Practical-RIFE](https://github.com/hzwer/Practical-RIFE) 4.25 (Google Drive, `flownet.pkl` de l'archive) | `6615790e…6de2` |
+| Fichier                            | Taille | Origine                                                                                                            | SHA-256 de l'original |
+| ---------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `realesr-general-x4v3.safetensors` | 2,4 Mo | [Real-ESRGAN v0.2.5.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth) | `8dc7edb9…6292`       |
+| `realesr-animevideov3.safetensors` | 1,2 Mo | [Real-ESRGAN v0.2.5.0](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth) | `b8a83768…b75d`       |
+| `rife-4.25.safetensors`            | 11 Mo  | [Practical-RIFE](https://github.com/hzwer/Practical-RIFE) 4.25 (Google Drive, `flownet.pkl` de l'archive)          | `6615790e…6de2`       |
 
 RIFE 4.25 est la version conseillée par Practical-RIFE « pour la plupart des scènes » ; ses poids se téléchargent.
 
