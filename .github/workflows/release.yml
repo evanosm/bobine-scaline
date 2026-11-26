@@ -57,7 +57,9 @@ jobs:
       - name: Tests
         if: matrix.platform != 'darwin-x64'
         working-directory: worker
-        run: cargo test --release --locked
+        # Un test à la fois : WARP (GPU logiciel de DirectX 12) plante quand plusieurs appareils
+        # sont créés en même temps dans un processus (le programme natif n'en crée qu'un).
+        run: cargo test --release --locked -- --test-threads=1
       - name: Compilation
         working-directory: worker
         run: cargo build --release --locked --target "$TARGET"
