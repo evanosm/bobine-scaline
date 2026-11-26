@@ -1,0 +1,5 @@
+[toolchain]
+# Même version que Bobine : clippy et rustfmt identiques en local et en CI.
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

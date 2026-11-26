@@ -1,0 +1,46 @@
+# Programme natif de Scaline (plugin de Bobine) : agrandissement (Real-ESRGAN) et images
+# intermédiaires (RIFE), calculés en shaders WGSL sur wgpu (Metal, DX12, Vulkan), plus le
+# protocole 1 des programmes natifs de Bobine (lignes JSON sur stdin / stdout).
+# Crate autonome : la table `[workspace]` vide en fait sa propre racine.
+[package]
+name = "scaline-worker"
+version = "1.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[dependencies]
+# MIT ou Apache-2.0. Seuls les moteurs natifs de chaque système : wgpu n'active `metal` que sous
+# macOS, `dx12` que sous Windows, `vulkan` hors Apple. Ni GL ni WebGPU (taille du paquet).
+wgpu = { version = "30.0.2", default-features = false, features = ["std", "parking_lot", "wgsl", "metal", "dx12", "vulkan"] }
+# MIT ou Apache-2.0 : exécute une fonction asynchrone de wgpu de façon bloquante.
+pollster = "1.0.3"
+# MIT ou Apache-2.0 : nombres flottants 16 bits (poids f16 des modèles).
+half = "2.7.1"
+# MIT ou Apache-2.0 : redimensionnement des images sur le processeur, ligne par ligne.
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[lints.rust]
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+# Boucles par pixel (redimensionnement, référence des tests) : très lentes sans optimisation.
+[profile.dev]
+opt-level = 2
+
+# Paquet < 50 Mo avec quatre programmes : optimisé pour la taille (le calcul est sur le GPU).
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[workspace]
