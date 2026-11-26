@@ -1,0 +1,140 @@
+# Au tag v<version> : compile et teste le programme natif sur les quatre plateformes, assemble UN
+# paquet .bobine-ext qui les contient toutes avec les modèles, le vérifie (`bobine-plugin check`,
+# < 50 Mo) et le joint à une GitHub Release. La publication sur la marketplace de Bobine reste
+# manuelle (compte admin).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            platform: darwin-arm64
+            exe: scaline-worker
+          # Compilé sur le Mac arm64 pour Intel (même SDK Apple, sans runner Intel).
+          - os: macos-15
+            target: x86_64-apple-darwin
+            platform: darwin-x64
+            exe: scaline-worker
+          # glibc 2.35 (Ubuntu 22.04) : Vulkan se charge par dlopen, impossible en musl statique.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x64
+            exe: scaline-worker
+          # Les tests tournent sur WARP, le GPU logiciel de DirectX 12.
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x64
+            exe: scaline-worker.exe
+    runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+      EXE: ${{ matrix.exe }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust (version de worker/rust-toolchain.toml) et cible
+        working-directory: worker
+        run: rustup target add "$TARGET"
+      - name: Vulkan logiciel (lavapipe)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mesa-vulkan-drivers libvulkan1
+      - name: Modèles
+        run: scripts/fetch-models.sh
+      - name: Tests
+        if: matrix.platform != 'darwin-x64'
+        working-directory: worker
+        run: cargo test --release --locked
+      - name: Compilation
+        working-directory: worker
+        run: cargo build --release --locked --target "$TARGET"
+      - name: Binaire nommé pour sa plateforme
+        run: |
+          mkdir -p out
+          name="scaline-worker-$PLATFORM"
+          if [ "$PLATFORM" = windows-x64 ]; then name="$name.exe"; fi
+          cp "worker/target/$TARGET/release/$EXE" "out/$name"
+          ls -l out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: worker-${{ matrix.platform }}
+          path: out/
+          if-no-files-found: error
+
+  package:
+    needs: worker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      SDK_COMMIT: 4b6b172a423156be0050016695004b85518257e1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: scaline
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: evanosm/bobine-plugin-sdk
+          ref: 4b6b172a423156be0050016695004b85518257e1
+          path: bobine-plugin-sdk
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: scaline/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: SDK
+        working-directory: bobine-plugin-sdk
+        run: |
+          test "$(git rev-parse HEAD)" = "$SDK_COMMIT"
+          pnpm install --frozen-lockfile
+          pnpm build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: worker-*
+          merge-multiple: true
+          path: scaline/package/bin
+      - name: Le tag correspond à la version du manifeste
+        working-directory: scaline
+        run: |
+          version="$(jq -r .version bobine.json)"
+          test "v$version" = "$GITHUB_REF_NAME"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Paquet vérifié
+        working-directory: scaline
+        run: |
+          scripts/fetch-models.sh
+          pnpm install --frozen-lockfile
+          pnpm test
+          node scripts/build.mjs --no-worker --release
+          chmod +x package/bin/scaline-worker-*
+          pnpm check
+          pnpm exec bobine-plugin pack package --out "genez.scaline-$VERSION.bobine-ext"
+          size=$(stat -c %s "genez.scaline-$VERSION.bobine-ext")
+          echo "paquet : $size octets"
+          test "$size" -lt 52428800
+          shasum -a 256 "genez.scaline-$VERSION.bobine-ext" | tee "genez.scaline-$VERSION.bobine-ext.sha256"
+      - name: GitHub Release
+        working-directory: scaline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "genez.scaline-$VERSION.bobine-ext" "genez.scaline-$VERSION.bobine-ext.sha256" \
+            --title "Scaline $VERSION" \
+            --latest \
+            --notes "Paquet de Scaline $VERSION pour Bobine 0.4.0 et plus (macOS arm64 et x64, Linux x64, Windows x64, modèles compris). À publier sur la marketplace depuis un compte admin."

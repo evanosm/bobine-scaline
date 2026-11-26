@@ -1,0 +1,66 @@
+# Tests du programme natif et du plugin, à chaque push sur main et PR, sur Ubuntu seulement
+# (minutes comptées ; les quatre plateformes sont compilées et testées au tag, release.yml).
+# Les shaders tournent sur lavapipe (Vulkan logiciel de Mesa) : SCALINE_REQUIRE_GPU fait échouer
+# les tests au lieu de les sauter s'il manque. Le SDK n'est pas encore sur npm : il est pris dans
+# son dépôt public, à un commit fixé, à côté de ce dépôt (même disposition qu'en local).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      SDK_COMMIT: 4b6b172a423156be0050016695004b85518257e1
+      SCALINE_REQUIRE_GPU: "1"
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: scaline
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: evanosm/bobine-plugin-sdk
+          ref: 4b6b172a423156be0050016695004b85518257e1
+          path: bobine-plugin-sdk
+      - name: Vulkan logiciel (lavapipe)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mesa-vulkan-drivers libvulkan1
+      - name: Modèles (release modeles-1, sommes vérifiées)
+        run: scaline/scripts/fetch-models.sh
+      - name: Programme natif
+        working-directory: scaline/worker
+        run: |
+          rustup show active-toolchain
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
+          cargo test --locked
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: scaline/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: SDK
+        working-directory: bobine-plugin-sdk
+        run: |
+          test "$(git rev-parse HEAD)" = "$SDK_COMMIT"
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Plugin
+        working-directory: scaline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+      - name: Dossier du plugin vérifié (programme natif Linux)
+        working-directory: scaline
+        run: |
+          pnpm build
+          pnpm check
