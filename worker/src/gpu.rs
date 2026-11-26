@@ -7,6 +7,7 @@
 
 use half::f16;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
 /// Erreur de calcul, rendue au plugin avec un code court.
@@ -99,6 +100,8 @@ pub struct Gpu {
     pipelines: HashMap<&'static str, wgpu::ComputePipeline>,
     /// Tampon minuscule lié aux entrées inutilisées d'un shader.
     dummy: wgpu::Buffer,
+    /// Première erreur du GPU non attrapée (shader refusé, tampon trop grand…).
+    errors: Arc<Mutex<Option<String>>>,
 }
 
 /// Paramètres d'un shader : 12 mots de 32 bits (entiers, ou flottants par `f32::to_bits`).
@@ -152,9 +155,16 @@ impl Gpu {
         }))
         .map_err(|e| GpuError::new("no_gpu", e.to_string()))?;
         // Par défaut, wgpu panique sur une erreur de validation ; avec `panic = "abort"` le
-        // programme se fermerait sans rien dire. On l'écrit au journal de Bobine.
-        device.on_uncaptured_error(std::sync::Arc::new(|error: wgpu::Error| {
+        // programme se fermerait sans rien dire. On l'écrit au journal de Bobine et on la garde :
+        // le calcul suivant échoue avec un message clair au lieu de rendre une image fausse
+        // (sous DirectX 12, une erreur de compilation d'un shader arrive par ce chemin).
+        let errors: Arc<Mutex<Option<String>>> = Arc::default();
+        let sink = errors.clone();
+        device.on_uncaptured_error(Arc::new(move |error: wgpu::Error| {
             eprintln!("scaline : erreur GPU : {error}");
+            if let Ok(mut first) = sink.lock() {
+                first.get_or_insert_with(|| error.to_string().chars().take(300).collect());
+            }
         }));
         // Une erreur de compilation d'un shader est attrapée ici (sinon seulement journalisée, et
         // les calculs rendraient des zéros sans rien dire).
@@ -199,7 +209,7 @@ impl Gpu {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        Ok(Gpu {
+        let gpu = Gpu {
             device,
             queue,
             f16,
@@ -207,7 +217,18 @@ impl Gpu {
             software,
             pipelines,
             dummy,
-        })
+            errors,
+        };
+        gpu.check()?;
+        Ok(gpu)
+    }
+
+    /// Échoue si le GPU a signalé une erreur depuis sa création.
+    pub fn check(&self) -> Result<(), GpuError> {
+        match self.errors.lock().ok().and_then(|e| e.clone()) {
+            Some(error) => Err(GpuError::new("gpu_failed", error)),
+            None => Ok(()),
+        }
     }
 
     /// Octets d'une valeur stockée.
@@ -381,6 +402,8 @@ impl Gpu {
             .map_err(|e| fail(e.to_string()))?
             .to_vec();
         staging.unmap();
+        // Une erreur de validation pendant le calcul : l'image lue serait fausse.
+        self.check()?;
         Ok(data)
     }
 
