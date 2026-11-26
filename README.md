@@ -181,4 +181,7 @@ macOS, M1 Pro, clip 1280 × 720 de 1 s à 25 im./s posé dans une séquence 1280
 - Cadence constante supposée pour placer les images intermédiaires (`fps` nominal du média).
 - Un seul rendu à la fois (une session `media.encode` par plugin).
 - Le ralenti double la durée du clip et décale les clips suivants (ripple).
-- macOS Intel, Linux et Windows : compilés et testés en CI (lavapipe, WARP), pas essayés sur une vraie machine.
+- macOS Intel, Linux et Windows : compilés et testés en CI (lavapipe sous Linux, WARP sous Windows, un test à la
+  fois : WARP plante quand plusieurs appareils DirectX 12 sont créés en parallèle), pas essayés sur une vraie machine.
+- Windows : wgpu compile les shaders avec FXC, sans f16 : stockage et calculs en f32 (Real-ESRGAN 1,6 fois plus
+  lent qu'en f16 sur le M1 Pro, à GPU égal).
