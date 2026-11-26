@@ -1,0 +1,7 @@
+node_modules/
+package/
+worker/target/
+*.bobine-ext
+.DS_Store
+# Poids : téléchargés par scripts/fetch-models.sh (sommes dans models/SHA256SUMS)
+models/*.safetensors
